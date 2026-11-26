@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Growth Ops Dashboard · B2B Healthtech (synthetic data)</title>
+<meta name="description" content="Growth operations dashboard: ARR, net revenue retention, churn, time to launch and cohort retention for a B2B healthtech platform. Synthetic data.">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --page: #f5f6f8;
+    --surface-1: #ffffff;
+    --text-primary: #191919;
+    --text-secondary: #666666;
+    --grid: #ececec;
+    --axis: #c2c2c2;
+    --border: #e6e6e6;
+    --series-1: #257de0;
+    --series-2: #f47230;
+    --series-3: #00b894;
+    --good: #0aac23;
+    --critical: #dc3c3d;
+    --seq-0: #ffffff; --seq-1: #cce3fd; --seq-2: #9dc8f7; --seq-3: #6aabf1; --seq-4: #338ced; --seq-5: #2370cd; --seq-6: #1757ac;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --page: #111111; --surface-1: #191919; --text-primary: #efefef; --text-secondary: #9c9c9c;
+      --grid: #2a2a2a; --axis: #474747; --border: #2c2c2c;
+      --series-1: #338ced; --series-2: #e76624; --series-3: #00a888;
+      --seq-0: #191919; --seq-1: #0e3d7e; --seq-2: #0f4a96; --seq-3: #1b64be; --seq-4: #257de0; --seq-5: #519ced; --seq-6: #9dc8f7;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .viz-root { background: var(--page); color: var(--text-primary); min-height: 100vh; }
+  header { padding: 28px 32px 8px; max-width: 1280px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+  header p { margin: 6px 0 0; color: var(--text-secondary); font-size: 14px; }
+  main { max-width: 1280px; margin: 0 auto; padding: 8px 32px 40px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 16px 0 20px; font-size: 14px; }
+  .seg { display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border: 1px solid var(--border);
+         border-radius: 999px; background: var(--surface-1); cursor: pointer; user-select: none; color: var(--text-primary); font: inherit; }
+  .seg[aria-pressed="false"] { opacity: .45; }
+  .seg i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .range { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .range button { border: 0; background: var(--surface-1); color: var(--text-secondary); padding: 6px 12px; font: inherit; cursor: pointer; }
+  .range button[aria-pressed="true"] { background: var(--text-primary); color: var(--surface-1); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .kpi { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .kpi .label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; }
+  .kpi .value { font-size: 30px; font-weight: 700; margin: 6px 0 2px; letter-spacing: -0.02em; }
+  .kpi .delta { font-size: 13px; color: var(--text-secondary); }
+  .delta .up::before { content: "▲ "; color: var(--good); } .delta .down::before { content: "▼ "; color: var(--critical); }
+  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; grid-column: span 6; min-width: 0; }
+  .card.wide { grid-column: span 8; } .card.narrow { grid-column: span 4; }
+  .card h2 { font-size: 15px; margin: 0; } .card .sub { font-size: 13px; color: var(--text-secondary); margin: 3px 0 10px; }
+  .chart { position: relative; height: 260px; }
+  details { margin-top: 10px; font-size: 13px; } summary { cursor: pointer; color: var(--text-secondary); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--text-secondary); font-weight: 600; }
+  .heat td.cell { text-align: center; border: 2px solid var(--surface-1); border-radius: 4px; }
+  .insights { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.6; }
+  footer { max-width: 1280px; margin: 0 auto; padding: 0 32px 32px; font-size: 12px; color: var(--text-secondary); }
+  footer a { color: inherit; }
+  @media (max-width: 900px) { .card, .card.wide, .card.narrow { grid-column: span 12; } header, main, footer { padding-left: 16px; padding-right: 16px; } }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<header>
+  <h1>Growth Ops Dashboard</h1>
+  <p>B2B healthtech platform · revenue, retention and onboarding · <strong>synthetic data</strong></p>
+</header>
+<main>
+  <div class="filters" role="toolbar" aria-label="Filters">
+    <span style="color:var(--text-secondary)">Segments</span>
+    <span id="segFilters"></span>
+    <span style="color:var(--text-secondary);margin-left:8px">Range</span>
+    <span class="range" id="rangeFilter">
+      <button data-range="12" aria-pressed="false">Last 12 months</button>
+      <button data-range="24" aria-pressed="true">All 24 months</button>
+    </span>
+  </div>
+
+  <section class="kpis" id="kpis" aria-label="Headline metrics"></section>
+
+  <div class="grid">
+    <div class="card wide">
+      <h2>Monthly recurring revenue by segment</h2>
+      <p class="sub">Live sites only, USD</p>
+      <div class="chart"><canvas id="mrrChart" aria-label="MRR by segment line chart" role="img"></canvas></div>
+      <details><summary>Show as table</summary><div id="mrrTable"></div></details>
+    </div>
+    <div class="card narrow">
+      <h2>What the data says</h2>
+      <p class="sub">Generated from the current numbers</p>
+      <ul class="insights" id="insights"></ul>
+    </div>
+
+    <div class="card">
+      <h2>New sites launched</h2>
+      <p class="sub">Go-lives per month, stacked by segment</p>
+      <div class="chart"><canvas id="launchChart" role="img" aria-label="Launches per month stacked bar chart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Median days from signup to launch</h2>
+      <p class="sub">By signup quarter: the onboarding playbook at work</p>
+      <div class="chart"><canvas id="ttlChart" role="img" aria-label="Days to launch line chart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>Net revenue retention, trailing 12 months</h2>
+      <p class="sub">MRR today from sites live 12 months earlier ÷ their MRR then</p>
+      <div class="chart"><canvas id="nrrChart" role="img" aria-label="NRR line chart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Why sites churned</h2>
+      <p class="sub">All churned sites, 2024–2025</p>
+      <div class="chart"><canvas id="churnChart" role="img" aria-label="Churn reasons bar chart"></canvas></div>
+    </div>
+
+    <div class="card wide" style="grid-column: span 12">
+      <h2>Logo retention by launch cohort</h2>
+      <p class="sub">Share of sites still live N months after launch (blank = not enough time elapsed)</p>
+      <div id="cohortTable"></div>
+    </div>
+  </div>
+</main>
+<footer>
+  Built by <a href="https://mprantikk.github.io/">Masud Parvej</a> · data generated by <code>pipeline/</code> (Python) · charts: Chart.js ·
+  <a href="https://github.com/mprantikk/growth-ops-dashboard">source</a>
+</footer>
+</div>
+
+<script>
+const css = (v) => getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(v).trim();
+const money = (v) => v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${v}`;
+const SEG_VAR = { 'Enterprise': '--series-1', 'Mid-market': '--series-2', 'SMB': '--series-3' };  // colour follows the entity
+const state = { segments: new Set(), range: 24 };
+let D, charts = {};
+
+// Direct labels at the end of each visible line (identity never by colour alone)
+const endLabels = {
+  id: 'endLabels',
+  afterDatasetsDraw(chart, _, opts) {
+    if (!opts || !opts.enabled) return;
+    const { ctx } = chart;
+    ctx.save();
+    ctx.font = '600 12px Inter, system-ui, sans-serif';
+    ctx.fillStyle = css('--text-primary');
+    ctx.textBaseline = 'middle';
+    chart.data.datasets.forEach((ds, i) => {
+      const meta = chart.getDatasetMeta(i);
+      if (meta.hidden || !meta.data.length) return;
+      const pt = [...meta.data].reverse().find(p => !p.skip);
+      if (pt) ctx.fillText(ds.label, pt.x + 8, pt.y);
+    });
+    ctx.restore();
+  }
+};
+Chart.register(endLabels);
+
+function baseOptions(extra = {}) {
+  const text2 = css('--text-secondary');
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    layout: { padding: { right: extra.rightPad || 8 } },
+    plugins: {
+      legend: { display: extra.legend ?? true, position: 'top', align: 'start',
+                labels: { color: text2, boxWidth: 10, boxHeight: 10, useBorderRadius: true, borderRadius: 3 } },
+      tooltip: { backgroundColor: css('--text-primary'), titleColor: css('--surface-1'), bodyColor: css('--surface-1'),
+                 padding: 10, cornerRadius: 6, callbacks: extra.tooltip || {} },
+      endLabels: { enabled: !!extra.endLabels },
+    },
+    scales: {
+      x: { stacked: !!extra.stacked, grid: { display: false }, border: { color: css('--axis') }, ticks: { color: text2, maxRotation: 0, autoSkipPadding: 14 } },
+      y: { stacked: !!extra.stacked, grid: { color: css('--grid') }, border: { display: false },
+           ticks: { color: text2, ...(extra.yFmt ? { callback: extra.yFmt } : {}) }, beginAtZero: extra.zero ?? true,
+           ...(extra.yRange || {}) },
+    },
+  };
+}
+
+function sliceMonths(arr) { return arr.slice(-state.range); }
+function visibleSegs() { return D.segments.filter(s => state.segments.has(s)); }
+
+function renderKpis() {
+  const k = D.kpis;
+  const launchDelta = Math.round(100 * (k.median_launch_days / k.median_launch_days_prior_year - 1));
+  const tiles = [
+    ['ARR', money(k.arr), `<span class="up">${k.arr_yoy_pct}%</span> vs last year`],
+    ['Net revenue retention', `${k.nrr_pct}%`, `trailing 12 months`],
+    ['Gross MRR churn', `${k.avg_gross_churn_12m_pct}%`, `monthly average, last 12 months`],
+    ['Live sites', k.live_sites.toLocaleString(), `as of ${D.months.at(-1)}`],
+    ['Days to launch', `${k.median_launch_days}`, `<span class="up">${Math.abs(launchDelta)}% faster</span> than a year ago`],
+  ];
+  document.getElementById('kpis').innerHTML = tiles.map(([l, v, d]) =>
+    `<div class="kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="delta">${d}</div></div>`).join('');
+}
+
+function renderInsights() {
+  const k = D.kpis, m = D.mrr_by_segment, last = D.months.length - 1;
+  const total = s => D.segments.reduce((a, g) => a + m[g][s], 0);
+  const entShare = Math.round(100 * m['Enterprise'][last] / total(last));
+  const nrrFirst = D.nrr_by_month.find(v => v !== null);
+  const [topReason, topN] = Object.entries(D.churn_reasons)[0];
+  const churned = Object.values(D.churn_reasons).reduce((a, b) => a + b, 0);
+  const items = [
+    `ARR grew <b>${k.arr_yoy_pct}%</b> year on year, driven mainly by new logos.`,
+    `Enterprise is <b>${entShare}%</b> of MRR from a small share of sites, so each enterprise churn matters.`,
+    `NRR slipped from <b>${nrrFirst}%</b> to <b>${k.nrr_pct}%</b>: expansion no longer covers churn. Worth a retention review.`,
+    `Onboarding is <b>${k.median_launch_days_prior_year - k.median_launch_days} days</b> faster than a year ago across segments.`,
+    `“${topReason}” is the top churn reason (${Math.round(100 * topN / churned)}% of churned sites), largely outside our control.`,
+  ];
+  document.getElementById('insights').innerHTML = items.map(i => `<li>${i}</li>`).join('');
+}
+
+function renderMrr() {
+  const labels = sliceMonths(D.months);
+  const datasets = visibleSegs().map(s => ({
+    label: s, data: sliceMonths(D.mrr_by_segment[s]), borderColor: css(SEG_VAR[s]), backgroundColor: css(SEG_VAR[s]),
+    borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderWidth: 2, pointHoverBorderColor: css('--surface-1'), tension: 0.25,
+  }));
+  draw('mrrChart', 'line', { labels, datasets }, baseOptions({ endLabels: true, rightPad: 84, yFmt: money,
+    tooltip: { label: c => ` ${c.dataset.label}: ${money(c.parsed.y)}` } }));
+  const rows = labels.map((mo, i) => `<tr><td>${mo}</td>${visibleSegs().map(s => `<td>${money(sliceMonths(D.mrr_by_segment[s])[i])}</td>`).join('')}</tr>`).join('');
+  document.getElementById('mrrTable').innerHTML = `<table><tr><th>Month</th>${visibleSegs().map(s => `<th>${s}</th>`).join('')}</tr>${rows}</table>`;
+}
+
+function renderLaunches() {
+  const datasets = visibleSegs().map(s => ({
+    label: s, data: sliceMonths(D.launches_by_segment[s]), backgroundColor: css(SEG_VAR[s]),
+    borderColor: css('--surface-1'), borderWidth: { top: 2 }, borderSkipped: 'bottom', borderRadius: 4, maxBarThickness: 22,
+  }));
+  draw('launchChart', 'bar', { labels: sliceMonths(D.months), datasets }, baseOptions({ stacked: true }));
+}
+
+function renderTtl() {
+  const datasets = visibleSegs().map(s => ({
+    label: s, data: D.median_launch_days_by_segment[s], borderColor: css(SEG_VAR[s]), backgroundColor: css(SEG_VAR[s]),
+    borderWidth: 2, pointRadius: 4, pointBorderColor: css('--surface-1'), pointBorderWidth: 2, tension: 0.2,
+  }));
+  draw('ttlChart', 'line', { labels: D.quarters, datasets }, baseOptions({ endLabels: true, rightPad: 84,
+    yFmt: v => `${v}d`, tooltip: { label: c => ` ${c.dataset.label}: ${c.parsed.y} days` } }));
+}
+
+function renderNrr() {
+  const data = sliceMonths(D.nrr_by_month);
+  const ref = { label: '100% (break-even)', data: data.map(() => 100), borderColor: css('--axis'), borderDash: [4, 4], borderWidth: 1, pointRadius: 0 };
+  const line = { label: 'NRR', data, borderColor: css('--series-1'), backgroundColor: css('--series-1'), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, spanGaps: false, tension: 0.25 };
+  draw('nrrChart', 'line', { labels: sliceMonths(D.months), datasets: [line, ref] },
+    baseOptions({ legend: false, zero: false, yFmt: v => `${v}%`, yRange: { suggestedMin: 94, suggestedMax: 106 },
+      tooltip: { label: c => c.datasetIndex === 0 ? ` NRR: ${c.parsed.y}%` : null } }));
+}
+
+function renderChurn() {
+  const entries = Object.entries(D.churn_reasons);
+  draw('churnChart', 'bar', {
+    labels: entries.map(e => e[0]),
+    datasets: [{ label: 'Churned sites', data: entries.map(e => e[1]), backgroundColor: css('--series-1'), borderRadius: 4, maxBarThickness: 26 }],
+  }, Object.assign(baseOptions({ legend: false }), { indexAxis: 'y', interaction: { mode: 'nearest', intersect: true } }));
+  charts.churnChart.options.scales.y.grid = { display: false };
+  charts.churnChart.options.scales.x.grid = { color: css('--grid') };
+  charts.churnChart.update();
+}
+
+function renderCohorts() {
+  const steps = ['--seq-1', '--seq-2', '--seq-3', '--seq-4', '--seq-5', '--seq-6'];
+  const shade = v => steps[Math.min(steps.length - 1, Math.max(0, Math.floor((v - 70) / 5)))];
+  const head = [0, 3, 6, 9, 12].map(m => `<th style="text-align:center">Month ${m}</th>`).join('');
+  const rows = D.cohort_retention.map(r => `<tr><td>${r.cohort} <span style="color:var(--text-secondary)">(${r.sites} sites)</span></td>${
+    r.retention.map(v => {
+      if (v === null) return '<td class="cell"></td>';
+      const bg = css(shade(v)), dark = steps.indexOf(shade(v)) >= 3;
+      const ink = matchMedia('(prefers-color-scheme: dark)').matches ? (dark ? '#191919' : '#efefef') : (dark ? '#ffffff' : '#191919');
+      return `<td class="cell" style="background:${bg};color:${ink}" title="${r.cohort}: ${v}% still live">${v}%</td>`;
+    }).join('')}</tr>`).join('');
+  document.getElementById('cohortTable').innerHTML = `<table class="heat"><tr><th>Launch cohort</th>${head}</tr>${rows}</table>`;
+}
+
+function draw(id, type, data, options) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), { type, data, options });
+}
+
+function renderAll() { renderKpis(); renderInsights(); renderMrr(); renderLaunches(); renderTtl(); renderNrr(); renderChurn(); renderCohorts(); }
+
+function buildFilters() {
+  const wrap = document.getElementById('segFilters');
+  wrap.innerHTML = D.segments.map(s =>
+    `<button class="seg" aria-pressed="true" data-seg="${s}"><i style="background:var(${SEG_VAR[s]})"></i>${s}</button>`).join(' ');
+  wrap.querySelectorAll('.seg').forEach(b => b.addEventListener('click', () => {
+    const s = b.dataset.seg;
+    if (state.segments.has(s) && state.segments.size > 1) state.segments.delete(s); else state.segments.add(s);
+    wrap.querySelectorAll('.seg').forEach(x => x.setAttribute('aria-pressed', state.segments.has(x.dataset.seg)));
+    renderMrr(); renderLaunches(); renderTtl();
+  }));
+  document.querySelectorAll('#rangeFilter button').forEach(b => b.addEventListener('click', () => {
+    state.range = +b.dataset.range;
+    document.querySelectorAll('#rangeFilter button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    renderMrr(); renderLaunches(); renderNrr();
+  }));
+}
+
+fetch('data/metrics.json').then(r => r.json()).then(json => {
+  D = json;
+  D.segments.forEach(s => state.segments.add(s));
+  buildFilters();
+  renderAll();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
+});
+</script>
+</body>
+</html>
